@@ -1,0 +1,180 @@
+"use client";
+
+import { useCallback, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  type OnConnect,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+
+import MindMapNode from "./MindMapNode";
+import MindMapToolbar from "./MindMapToolbar";
+import { NodeActionsContext } from "./NodeActionsContext";
+import { appendChildNodes, buildGraphFromAi } from "@/lib/layout";
+import { api } from "@/lib/api";
+import type { FlowEdge, FlowNode, GraphData } from "@/lib/types";
+
+const nodeTypes = { mindMapNode: MindMapNode };
+
+interface MindMapCanvasProps {
+  mindMapId: string;
+  initialTitle: string;
+  initialGraph: GraphData;
+  token: string;
+}
+
+export default function MindMapCanvas({
+  mindMapId,
+  initialTitle,
+  initialGraph,
+}: MindMapCanvasProps) {
+  const { getToken } = useAuth();
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(
+    (initialGraph.nodes as FlowNode[]) ?? []
+  );
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(
+    (initialGraph.edges as FlowEdge[]) ?? []
+  );
+  const [title, setTitle] = useState(initialTitle);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
+
+  const onConnect: OnConnect = useCallback(
+    (params) => setEdges((eds) => addEdge(params, eds)),
+    [setEdges]
+  );
+
+  const handleGenerate = async (topic: string) => {
+    setIsGenerating(true);
+    try {
+      const token = await getToken();
+      const result = await api.ai.generate(topic, token!);
+      const { nodes: newNodes, edges: newEdges } = buildGraphFromAi(result.nodes);
+      setNodes(newNodes);
+      setEdges(newEdges);
+      if (title === "Untitled Mind Map") {
+        setTitle(result.title);
+      }
+    } catch (err) {
+      console.error("Generation failed:", err);
+      alert("Failed to generate mind map. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAddChild = useCallback((parentId: string) => {
+    const maxId = Math.max(0, ...nodes.map((n) => parseInt(n.id) || 0));
+    const newId = String(maxId + 1);
+    const parentNode = nodes.find((n) => n.id === parentId);
+
+    setNodes((nds) => [
+      ...nds,
+      {
+        id: newId,
+        type: "mindMapNode",
+        position: {
+          x: (parentNode?.position.x ?? 0) + 240,
+          y: parentNode?.position.y ?? 0,
+        },
+        data: { label: "New Idea", nodeType: "sub" },
+      },
+    ]);
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: `e-${parentId}-${newId}`,
+        source: parentId,
+        target: newId,
+        type: "smoothstep",
+      },
+    ]);
+  }, [nodes, setNodes, setEdges]);
+
+  const handleAiExpand = useCallback(async (nodeId: string, nodeLabel: string) => {
+    setExpandingNodeId(nodeId);
+    try {
+      const token = await getToken();
+      const result = await api.ai.expand(nodeLabel, title, token!);
+      const labels = result.nodes.map((n) => n.label);
+      const { nodes: updatedNodes, edges: updatedEdges } = appendChildNodes(
+        nodes, edges, nodeId, labels
+      );
+      setNodes(updatedNodes);
+      setEdges(updatedEdges);
+    } catch (err) {
+      console.error("Expand failed:", err);
+      alert("Failed to expand node. Please try again.");
+    } finally {
+      setExpandingNodeId(null);
+    }
+  }, [getToken, nodes, edges, title, setNodes, setEdges]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const token = await getToken();
+      await api.mindmaps.update(
+        mindMapId,
+        { title, graph_data: { nodes, edges } as GraphData },
+        token!
+      );
+    } catch (err) {
+      console.error("Save failed:", err);
+      alert("Failed to save. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <NodeActionsContext.Provider
+      value={{ onAddChild: handleAddChild, onAiExpand: handleAiExpand, expandingNodeId }}
+    >
+      <div className="flex flex-col h-screen bg-slate-950">
+        <MindMapToolbar
+          title={title}
+          isGenerating={isGenerating}
+          onTitleChange={setTitle}
+          onGenerate={handleGenerate}
+          onSave={handleSave}
+          isSaving={isSaving}
+        />
+
+        <div className="flex-1">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            defaultEdgeOptions={{ type: "smoothstep", animated: false }}
+          >
+            <Background color="#2d3748" gap={24} size={1} />
+            <Controls className="!bg-slate-800 !border-slate-700 !text-white" />
+            <MiniMap
+              nodeColor={(n) => {
+                const data = n.data as { nodeType?: string };
+                if (data.nodeType === "central") return "#6366f1";
+                if (data.nodeType === "branch") return "#475569";
+                return "#334155";
+              }}
+              className="!bg-slate-900 !border-slate-700"
+            />
+          </ReactFlow>
+        </div>
+      </div>
+    </NodeActionsContext.Provider>
+  );
+}
