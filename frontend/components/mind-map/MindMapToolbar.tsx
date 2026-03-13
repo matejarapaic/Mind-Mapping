@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 interface MindMapToolbarProps {
   title: string;
@@ -30,6 +31,16 @@ export default function MindMapToolbar({
 
   return (
     <div className="flex items-center gap-3 p-3 bg-slate-900 border-b border-slate-700">
+      {/* Back to Dashboard */}
+      <Link
+        href="/dashboard"
+        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-1.5 shrink-0"
+      >
+        ← Dashboard
+      </Link>
+
+      <div className="w-px h-5 bg-slate-700" />
+
       {/* Title */}
       {editingTitle ? (
         <input
