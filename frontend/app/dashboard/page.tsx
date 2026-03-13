@@ -27,7 +27,6 @@ export default async function DashboardPage() {
   return (
     <DashboardShell
       maps={maps}
-      token={token!}
       userName={user?.firstName ?? ""}
       greeting={getGreeting()}
     />

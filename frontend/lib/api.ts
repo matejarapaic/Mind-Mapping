@@ -1,6 +1,8 @@
 import type {
   AiExpandResponse,
+  AiExplainResponse,
   AiGenerateResponse,
+  FileAttachment,
   GraphData,
   MindMap,
   MindMapListItem,
@@ -63,15 +65,27 @@ export const api = {
   },
 
   ai: {
-    generate: (topic: string, token: string) =>
+    generate: (topic: string, token: string, attachment?: FileAttachment) =>
       request<AiGenerateResponse>("/api/ai/generate", {
         method: "POST",
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({
+          topic,
+          ...(attachment
+            ? { file_content: attachment.base64, file_type: attachment.mediaType }
+            : {}),
+        }),
         token,
       }),
 
     expand: (nodeLabel: string, context: string, token: string) =>
       request<AiExpandResponse>("/api/ai/expand", {
+        method: "POST",
+        body: JSON.stringify({ node_label: nodeLabel, context }),
+        token,
+      }),
+
+    explain: (nodeLabel: string, context: string, token: string) =>
+      request<AiExplainResponse>("/api/ai/explain", {
         method: "POST",
         body: JSON.stringify({ node_label: nodeLabel, context }),
         token,

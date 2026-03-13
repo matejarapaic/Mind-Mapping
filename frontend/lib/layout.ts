@@ -62,7 +62,12 @@ export function buildGraphFromAi(aiNodes: AiNode[]): {
 }
 
 /**
- * Appends new child nodes to an existing graph, positioned relative to the parent.
+ * Appends new child nodes to an existing graph, then re-runs the full
+ * Dagre layout so nothing overlaps regardless of how many expansions happen.
+ *
+ * NOTE: only mindMapNode nodes are passed to dagre; freeform nodes
+ * (stickyNote, imageNode) are filtered out here and should be merged
+ * back in by the caller.
  */
 export function appendChildNodes(
   existingNodes: FlowNode[],
@@ -70,17 +75,14 @@ export function appendChildNodes(
   parentId: string,
   newLabels: string[],
 ): { nodes: FlowNode[]; edges: FlowEdge[] } {
-  const maxId = Math.max(0, ...existingNodes.map((n) => parseInt(n.id) || 0));
-  const parentNode = existingNodes.find((n) => n.id === parentId);
-  const baseX = (parentNode?.position.x ?? 0) + 240;
-  const baseY = parentNode?.position.y ?? 0;
-  const spacing = 70;
-  const offset = ((newLabels.length - 1) / 2) * spacing;
+  // Only operate on mind-map nodes (numeric IDs)
+  const mindMapOnly = existingNodes.filter((n) => n.type === "mindMapNode");
+  const maxId = Math.max(0, ...mindMapOnly.map((n) => parseInt(n.id) || 0));
 
   const newNodes: FlowNode[] = newLabels.map((label, i) => ({
     id: String(maxId + i + 1),
     type: "mindMapNode" as const,
-    position: { x: baseX, y: baseY + i * spacing - offset },
+    position: { x: 0, y: 0 }, // positions set by dagre below
     data: { label, nodeType: "sub" as const },
   }));
 
@@ -91,8 +93,31 @@ export function appendChildNodes(
     type: "smoothstep",
   }));
 
-  return {
-    nodes: [...existingNodes, ...newNodes],
-    edges: [...existingEdges, ...newEdges],
-  };
+  const allNodes = [...mindMapOnly, ...newNodes];
+  const allEdges = [...existingEdges, ...newEdges];
+
+  // Re-run full Dagre layout so every node is properly spaced
+  const g = new dagre.graphlib.Graph();
+  g.setGraph({ rankdir: "LR", ranksep: 80, nodesep: 40 });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  for (const node of allNodes) {
+    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  }
+  for (const edge of allEdges) {
+    g.setEdge(edge.source, edge.target);
+  }
+
+  dagre.layout(g);
+
+  const repositioned = allNodes.map((node) => {
+    const pos = g.node(node.id);
+    if (!pos) return node;
+    return {
+      ...node,
+      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
+    };
+  });
+
+  return { nodes: repositioned, edges: allEdges };
 }

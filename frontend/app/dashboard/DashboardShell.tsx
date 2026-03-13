@@ -3,13 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
+import { useAuth, UserButton } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 import type { MindMapListItem } from "@/lib/types";
 
 interface DashboardShellProps {
   maps: MindMapListItem[];
-  token: string;
   userName: string;
   greeting: string;
 }
@@ -23,21 +22,24 @@ const SUGGESTIONS = [
 
 export default function DashboardShell({
   maps,
-  token,
   userName,
   greeting,
 }: DashboardShellProps) {
   const router = useRouter();
+  const { getToken } = useAuth();
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mapList, setMapList] = useState<MindMapListItem[]>(maps);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleCreate = async (topicValue: string) => {
     const t = topicValue.trim();
     if (!t || loading) return;
     setLoading(true);
     try {
-      const map = await api.mindmaps.create("Untitled Mind Map", token);
+      const token = await getToken();
+      const map = await api.mindmaps.create("Untitled Mind Map", token!);
       router.push(`/map/${map.id}?topic=${encodeURIComponent(t)}`);
     } catch (err) {
       console.error(err);
@@ -49,12 +51,30 @@ export default function DashboardShell({
   const handleNewBlank = async () => {
     setLoading(true);
     try {
-      const map = await api.mindmaps.create("Untitled Mind Map", token);
+      const token = await getToken();
+      const map = await api.mindmaps.create("Untitled Mind Map", token!);
       router.push(`/map/${map.id}`);
     } catch (err) {
       console.error(err);
       alert("Failed to create mind map.");
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, mapId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Delete this mind map? This cannot be undone.")) return;
+    setDeletingId(mapId);
+    try {
+      const token = await getToken();
+      await api.mindmaps.delete(mapId, token!);
+      setMapList((prev) => prev.filter((m) => m.id !== mapId));
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete mind map.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -99,27 +119,36 @@ export default function DashboardShell({
           </p>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 space-y-0.5 pb-4">
-          {maps.length === 0 ? (
+          {mapList.length === 0 ? (
             <p className="text-xs text-white/25 px-3 py-4 text-center">
               No maps yet — create one above
             </p>
           ) : (
-            maps.map((map) => (
-              <Link
-                key={map.id}
-                href={`/map/${map.id}`}
-                className="flex flex-col px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors group"
-              >
-                <span className="text-sm text-white/70 group-hover:text-white truncate">
-                  {map.title}
-                </span>
-                <span className="text-[11px] text-white/25 mt-0.5">
-                  {new Date(map.updated_at).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-              </Link>
+            mapList.map((map) => (
+              <div key={map.id} className="relative group/item">
+                <Link
+                  href={`/map/${map.id}`}
+                  className="flex flex-col px-3 py-2.5 pr-8 rounded-xl hover:bg-white/5 transition-colors group"
+                >
+                  <span className="text-sm text-white/70 group-hover:text-white truncate">
+                    {map.title}
+                  </span>
+                  <span className="text-[11px] text-white/25 mt-0.5">
+                    {new Date(map.updated_at).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                </Link>
+                <button
+                  onClick={(e) => handleDelete(e, map.id)}
+                  disabled={deletingId === map.id}
+                  title="Delete map"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 transition-opacity text-white/30 hover:text-red-400 disabled:text-white/20 text-xs leading-none p-1 rounded"
+                >
+                  {deletingId === map.id ? "…" : "✕"}
+                </button>
+              </div>
             ))
           )}
         </nav>

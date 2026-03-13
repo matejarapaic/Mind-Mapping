@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { FlowNode } from "@/lib/types";
 import { useNodeActions } from "./NodeActionsContext";
@@ -15,8 +15,19 @@ function MindMapNode({ id, data, selected }: NodeProps<FlowNode>) {
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState(data.label);
   const [isHovered, setIsHovered] = useState(false);
-  const { onAddChild, onAiExpand, expandingNodeId } = useNodeActions();
+  const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { onAddChild, onAiExpand, onAiExplain, expandingNodeId, explainingNodeId } = useNodeActions();
+
+  const handleMouseEnter = () => {
+    if (hideTimeout.current) clearTimeout(hideTimeout.current);
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    hideTimeout.current = setTimeout(() => setIsHovered(false), 200);
+  };
   const isExpanding = expandingNodeId === id;
+  const isExplaining = explainingNodeId === id;
 
   const ring = selected ? "ring-2 ring-indigo-400" : "";
   const base = "rounded-xl cursor-pointer transition-all min-w-[80px] max-w-[160px] text-center";
@@ -24,13 +35,13 @@ function MindMapNode({ id, data, selected }: NodeProps<FlowNode>) {
   return (
     <div
       className="relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <Handle type="target" position={Position.Left} className="!bg-slate-500 !border-slate-400" />
 
       <div
-        className={`${base} ${styleMap[data.nodeType]} ${ring} ${isExpanding ? "opacity-60 animate-pulse" : ""}`}
+        className={`${base} ${styleMap[data.nodeType]} ${ring} ${isExpanding || isExplaining ? "opacity-60 animate-pulse" : ""}`}
         onDoubleClick={() => setIsEditing(true)}
       >
         {isEditing ? (
@@ -51,12 +62,12 @@ function MindMapNode({ id, data, selected }: NodeProps<FlowNode>) {
             className="bg-transparent outline-none text-center w-full"
           />
         ) : (
-          <span>{isExpanding ? "✦ thinking…" : label}</span>
+          <span>{isExpanding ? "✦ thinking…" : isExplaining ? "✦ reading…" : label}</span>
         )}
       </div>
 
       {/* Hover action buttons */}
-      {isHovered && !isEditing && !isExpanding && (
+      {isHovered && !isEditing && !isExpanding && !isExplaining && (
         <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 flex gap-1 z-50 pointer-events-auto">
           <button
             onClick={(e) => { e.stopPropagation(); onAddChild(id); }}
@@ -68,9 +79,16 @@ function MindMapNode({ id, data, selected }: NodeProps<FlowNode>) {
           <button
             onClick={(e) => { e.stopPropagation(); onAiExpand(id, label); }}
             className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 text-white text-xs rounded border border-indigo-500 whitespace-nowrap transition-colors"
-            title="AI expand this idea"
+            title="AI: add child ideas"
           >
-            ✦ AI
+            ✦ Expand
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onAiExplain(id, label); }}
+            className="px-2 py-0.5 bg-violet-700 hover:bg-violet-600 text-white text-xs rounded border border-violet-500 whitespace-nowrap transition-colors"
+            title="AI: explain this concept"
+          >
+            ✦ Explain
           </button>
         </div>
       )}
