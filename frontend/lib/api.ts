@@ -8,7 +8,13 @@ import type {
   MindMapListItem,
 } from "./types";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3000";
+// On the server (SSR/RSC), BACKEND_URL points to the Docker-internal address.
+// On the client, it is undefined (not bundled), so it falls back to the
+// build-time-inlined NEXT_PUBLIC_BACKEND_URL which points to the host.
+const BACKEND_URL =
+  process.env.BACKEND_URL ??
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  "http://localhost:8000";
 
 async function request<T>(
   path: string,

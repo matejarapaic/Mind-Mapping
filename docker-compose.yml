@@ -44,6 +44,9 @@ services:
       - "3000:3000"
     env_file:
       - ./frontend/.env
+    environment:
+      # Server-side (SSR/RSC) URL — uses Docker internal service name
+      - BACKEND_URL=http://backend:8000
     depends_on:
       - backend
 
