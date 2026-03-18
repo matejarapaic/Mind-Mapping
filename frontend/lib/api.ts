@@ -8,7 +8,7 @@ import type {
   MindMapListItem,
 } from "./types";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3000";
 
 async function request<T>(
   path: string,

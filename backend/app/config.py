@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     clerk_frontend_api: str
     # Comma-separated list of allowed CORS origins, e.g.:
     # "https://your-app.vercel.app,http://localhost:3000"
-    allowed_origins: str = "http://localhost:3000"
+    allowed_origins: str = "http://localhost:3000,http://mm.rapaic.info,https://mm.rapaic.info"
 
     @property
     def cors_origins(self) -> list[str]:
