@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import { api } from "@/lib/api";
+import { buildGraphFromAi } from "@/lib/layout";
 import type { MindMapListItem } from "@/lib/types";
 
 interface DashboardShellProps {
@@ -29,13 +30,16 @@ export default function DashboardShell({
   const { getToken } = useAuth();
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState("Creating…");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mapList, setMapList] = useState<MindMapListItem[]>(maps);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const chatFileRef = useRef<HTMLInputElement>(null);
 
   const handleCreate = async (topicValue: string) => {
     const t = topicValue.trim();
     if (!t || loading) return;
+    setLoadingLabel("Creating…");
     setLoading(true);
     try {
       const token = await getToken();
@@ -48,7 +52,42 @@ export default function DashboardShell({
     }
   };
 
+  const handleUploadChat = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so the same file can be re-selected
+    e.target.value = "";
+
+    setLoadingLabel("Mapping chat…");
+    setLoading(true);
+    try {
+      const chatJson = await file.text();
+      let chatTitle = file.name.replace(/\.json$/i, "");
+      try {
+        const parsed = JSON.parse(chatJson);
+        if (parsed.name) chatTitle = parsed.name;
+      } catch { /* keep filename as title */ }
+
+      const token = await getToken();
+      const map = await api.mindmaps.create(chatTitle, token!);
+      const result = await api.ai.generateFromChat(chatJson, token!);
+      const { nodes: newNodes, edges: newEdges } = buildGraphFromAi(result.nodes);
+
+      await api.mindmaps.update(
+        map.id,
+        { title: result.title || chatTitle, graph_data: { nodes: newNodes, edges: newEdges } },
+        token!
+      );
+      router.push(`/map/${map.id}`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to process Claude chat. Make sure it's a valid Claude export (.json).");
+      setLoading(false);
+    }
+  };
+
   const handleNewBlank = async () => {
+    setLoadingLabel("Creating…");
     setLoading(true);
     try {
       const token = await getToken();
@@ -203,13 +242,36 @@ export default function DashboardShell({
                 disabled={!topic.trim() || loading}
                 className="flex items-center gap-2 bg-white text-black disabled:bg-white/10 disabled:text-white/20 rounded-xl px-4 py-1.5 text-sm font-medium transition-all hover:bg-white/90"
               >
-                {loading ? (
+                {loading && loadingLabel !== "Mapping chat…" ? (
                   <span className="animate-spin inline-block">⟳</span>
                 ) : (
                   <>✦ Generate</>
                 )}
               </button>
             </div>
+          </div>
+
+          {/* Claude chat upload */}
+          <div className="mt-4 w-full flex justify-center">
+            <input
+              ref={chatFileRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleUploadChat}
+            />
+            <button
+              onClick={() => chatFileRef.current?.click()}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-[#1a1a1a] hover:bg-[#252525] border border-white/8 hover:border-white/20 rounded-full text-sm text-white/50 hover:text-white/90 transition-all disabled:opacity-40"
+            >
+              {loading && loadingLabel === "Mapping chat…" ? (
+                <span className="animate-spin inline-block">⟳</span>
+              ) : (
+                <span>↑</span>
+              )}
+              Upload Claude Chat
+            </button>
           </div>
 
           {/* Suggestion chips */}

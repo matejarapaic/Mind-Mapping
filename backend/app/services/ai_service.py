@@ -154,6 +154,55 @@ async def explain_node(node_label: str, context: str) -> dict:
     return json.loads(text)
 
 
+CHAT_SYSTEM_PROMPT = """You are an expert mind map generator specializing in analyzing conversations.
+Given a conversation transcript, extract the key topics, ideas, decisions, questions, and insights discussed, then organize them into a structured mind map.
+
+Return ONLY a raw JSON object — no markdown fences, no explanation. Use this exact structure:
+
+{
+  "title": "Short descriptive title of the conversation",
+  "nodes": [
+    {"id": "0", "label": "Central Topic"},
+    {"id": "1", "label": "Main Theme 1", "parent": "0"},
+    {"id": "2", "label": "Sub Point", "parent": "1"}
+  ]
+}
+
+Rules:
+- Node id "0" is always the central node (the conversation's core topic)
+- Generate 4–6 main branches: themes, topics, or logical sections of the conversation
+- Each main branch can have 2–4 sub-branches with specific points, decisions, or insights
+- Labels should be concise: 2–5 words max
+- IDs are sequential strings: "0", "1", "2", etc.
+- Focus on substance: key ideas, decisions made, questions raised, code discussed, action items
+- Return only the JSON object, nothing else"""
+
+
+async def generate_from_chat(chat_text: str) -> dict:
+    if len(chat_text) > 15000:
+        chat_text = chat_text[:15000] + "\n…[conversation truncated]"
+
+    response = await client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=2048,
+        thinking={"type": "adaptive"},
+        system=CHAT_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": f"Map out this conversation:\n\n{chat_text}"}],
+    )
+
+    text = next(
+        (block.text for block in response.content if block.type == "text"), ""
+    )
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    return json.loads(text)
+
+
 async def expand_node(node_label: str, context: str) -> dict:
     response = await client.messages.create(
         model="claude-opus-4-6",

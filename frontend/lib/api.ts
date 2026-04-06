@@ -96,5 +96,12 @@ export const api = {
         body: JSON.stringify({ node_label: nodeLabel, context }),
         token,
       }),
+
+    generateFromChat: (chatJson: string, token: string) =>
+      request<AiGenerateResponse>("/api/ai/generate-from-chat", {
+        method: "POST",
+        body: JSON.stringify({ chat_json: chatJson }),
+        token,
+      }),
   },
 };
